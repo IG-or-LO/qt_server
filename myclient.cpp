@@ -95,11 +95,42 @@ void MyClient::onReadyRead()
     in >> command;
     qDebug() << "Received command " << command;
     //
-    if (!_isAutched && command != comAutchReq)
+   if (!_isAutched && command != comAutchReq && command != comRegReq)
         return;
 
     switch(command)
     {
+
+        case comRegReq:
+        {
+            QString name;
+            QString pass;
+            in>>name;
+            in>>pass;
+            if (!_serv->isNameAndPassValid(name,pass))
+            {
+                //
+                doSendCommand(comErrNameOrPassInvalid);
+                return;
+            }
+            //
+            if (_serv->isNameUsed(name,pass))
+            {
+                //
+                doSendCommand(comErrNameUsed);
+                return;
+            }
+            //
+            _name = name;
+            _isAutched = true;
+            //
+            doSendUsersOnline();
+            //
+            emit addUserToGui(name);
+            //
+            _serv->doSendToAllUserJoin(_name);
+        }
+        break;
         //
         case comAutchReq:
         {
@@ -112,14 +143,14 @@ void MyClient::onReadyRead()
             if (!_serv->isNameAndPassValid(name,pass))
             {
                 //
-                doSendCommand(comErrNameInvalid);
+                doSendCommand(comErrNameOrPassInvalid);
                 return;
             }
             //
-            if (_serv->isNameUsed(name,pass))
+            if (!_serv->isNameAndPassTrue(name,pass))
             {
                 //
-                doSendCommand(comErrNameUsed);
+                doSendCommand(comErrNameOrPassFalse);
                 return;
             }
             //
@@ -159,8 +190,52 @@ void MyClient::onReadyRead()
             emit messageToGui(message, _name, users);
         }
         break;
+        //
+    case comLoadArchive:
+    {
+        QString name_user;
+        QString name_user_to_load;
+        in>>name_user;
+        in>>name_user_to_load; 
+        _serv->doSendArchive(name_user_to_load,name_user);
+        //
     }
+    break;
 
+    case comSavePersonalInfo:
+    {
+        QString name_user;
+        QString name_add;
+        QString surname_add;
+        QString aboutme_add;
+        in>>name_user;
+        in>>name_add;
+        in>>surname_add;
+        in>>aboutme_add;
+        _serv->doUpdatePersonalInfo(name_user,name_add,surname_add,aboutme_add);
+    }
+        break;
+    case comUpdatePassword:
+    {
+        QString name_user;
+        QString newpass;
+
+        in>>name_user;
+        in>>newpass;
+        _serv->doUpdatePassword(name_user,newpass);
+    }
+        break;
+    case comGetPersonalInfo:
+    {
+        QString name_user;
+        QString name_user_to_load;
+        in>>name_user;
+        in>>name_user_to_load;
+        _serv->doGetPersonalInfo(name_user,name_user_to_load);
+
+    }
+        break;
+}
     //for (long long i = 0; i < 4000000000; ++i){}
 }
 

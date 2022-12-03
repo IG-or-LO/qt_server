@@ -27,6 +27,12 @@ public:
     QStringList getUsersOnline() const;
     bool isNameAndPassValid(QString name,QString pass) const;
     bool isNameUsed(QString name, QString pass) const;
+    bool isNameAndPassTrue(QString name, QString pass) const;
+    void doSendArchive(QString name_user_to_load, QString name) const;
+    void doUpdatePersonalInfo(QString name_user, QString name_add,QString surname_add,QString aboutme_add) const;
+    void doUpdatePassword(QString name_user, QString newpass) const;
+    void doGetPersonalInfo(QString name_user, QString name_user_to_load) const;
+
 
 signals:
     void addLogToGui(QString string, QColor color = Qt::black);
@@ -42,7 +48,6 @@ private:
     DataBase        *db;
     QList<MyClient *> _clients;
     QWidget *_widget;
-    void add_new_user_bd(QString nickname, QString password);
 
 };
 

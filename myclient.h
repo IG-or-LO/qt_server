@@ -19,6 +19,7 @@ class MyClient : public QObject
 public:
     QTcpSocket *_sok;
     static const QString constNameUnknown;
+    static const quint8 comRegReq=0;
     static const quint8 comAutchReq = 1;
     static const quint8 comUsersOnline = 2;
     static const quint8 comUserJoin = 3;
@@ -28,8 +29,13 @@ public:
     static const quint8 comPublicServerMessage = 7;
     static const quint8 comPrivateServerMessage = 8;
     static const quint8 comAutchSuccess = 9;
-    static const quint8 comErrNameInvalid = 201;
+    static const quint8 comLoadArchive=10;
+    static const quint8 comSavePersonalInfo = 11;
+    static const quint8 comUpdatePassword = 12;
+    static const quint8 comGetPersonalInfo = 13;
+    static const quint8 comErrNameOrPassInvalid = 201;
     static const quint8 comErrNameUsed = 202;
+    static const quint8 comErrNameOrPassFalse = 203;
 
     explicit MyClient(int desc, Server *serv, QObject *parent = 0);
     ~MyClient();
