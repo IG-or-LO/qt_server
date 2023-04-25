@@ -6,18 +6,12 @@ const QString MyClient::constNameUnknown = QString(".Unknown");
 
 MyClient::MyClient(int desc, Server *serv, QObject *parent) :QObject(parent)
 {
-    //
     _serv = serv;
-    //
     _isAutched = false;
     _name = constNameUnknown;
-    //
     _blockSize = 0;
-    //�
     _sok = new QTcpSocket(this);
-    // incomingConnection()
     _sok->setSocketDescriptor(desc);
-    //
     connect(_sok, SIGNAL(connected()), this, SLOT(onConnect()));
     connect(_sok, SIGNAL(disconnected()), this, SLOT(onDisconnect()));
     connect(_sok, SIGNAL(readyRead()), this, SLOT(onReadyRead()));
@@ -43,11 +37,8 @@ void MyClient::onDisconnect()
     //
     if (_isAutched)
     {
-        //
         emit removeUserFromGui(_name);
-        //
         _serv->doSendToAllUserLeft(_name);
-        //������� �� ������
         emit removeUser(this);
     }
     deleteLater();
@@ -55,7 +46,6 @@ void MyClient::onDisconnect()
 
 void MyClient::onError(QAbstractSocket::SocketError socketError) const
 {
-    //w
     QWidget w;
     switch (socketError) {
     case QAbstractSocket::RemoteHostClosedError:
@@ -69,20 +59,18 @@ void MyClient::onError(QAbstractSocket::SocketError socketError) const
     default:
         QMessageBox::information(&w, "Error", "The following error occurred: "+_sok->errorString());
     }
-    //
 }
 
 void MyClient::onReadyRead()
 {
     QDataStream in(_sok);
-    //
     if (_blockSize == 0) {
-        //
         if (_sok->bytesAvailable() < (int)sizeof(quint16))
+     //    if (_sok->bytesAvailable() < (int)sizeof(unsigned int))
             return;
         //
         in >> _blockSize;
-        qDebug() << "_blockSize now " << _blockSize;
+        qDebug() << "_blockSize now " << _blockSize<< " bytesAvalible"<<_sok->bytesAvailable();
     }
     //
     if (_sok->bytesAvailable() < _blockSize)
@@ -105,30 +93,23 @@ void MyClient::onReadyRead()
         {
             QString name;
             QString pass;
+            QString mail;
+            QString phone;
             in>>name;
             in>>pass;
-            if (!_serv->isNameAndPassValid(name,pass))
-            {
-                //
-                doSendCommand(comErrNameOrPassInvalid);
-                return;
-            }
+            in>>mail;
+            in>>phone;
             //
-            if (_serv->isNameUsed(name,pass))
+            if (_serv->isNameUsed(name,pass,mail,phone))
             {
                 //
                 doSendCommand(comErrNameUsed);
                 return;
             }
-            //
+            doSendCommand(comRegSuccess);
             _name = name;
-            _isAutched = true;
-            //
-            doSendUsersOnline();
             //
             emit addUserToGui(name);
-            //
-            _serv->doSendToAllUserJoin(_name);
         }
         break;
         //
@@ -139,13 +120,7 @@ void MyClient::onReadyRead()
             QString pass;//new line pass
             in >> name;
             in >> pass;
-            //
-            if (!_serv->isNameAndPassValid(name,pass))
-            {
-                //
-                doSendCommand(comErrNameOrPassInvalid);
-                return;
-            }
+
             //
             if (!_serv->isNameAndPassTrue(name,pass))
             {
@@ -157,7 +132,11 @@ void MyClient::onReadyRead()
             _name = name;
             _isAutched = true;
             //
-            doSendUsersOnline();
+          //  _serv->doGetPersonalInfoAterAuth(_name);
+            doSendCommand(comAuthSuccess);
+
+            //временно убрал отправку списка пользователей онлайн
+         //   doSendCommand(comUsersOnline);
             //
             emit addUserToGui(name);
             //
@@ -178,26 +157,34 @@ void MyClient::onReadyRead()
         //
         case comMessageToUsers:
         {
-            QString users_in;
-            in >> users_in;
+            QString user_to;
+            in >> user_to;
             QString message;
             in >> message;
             //
-            QStringList users = users_in.split(",");
+            QStringList user_toList = user_to.split(",");
             //
-            _serv->doSendMessageToUsers(message, users, _name);
+            _serv->doSendMessageToUsers(message, user_toList, _name);
             //
-            emit messageToGui(message, _name, users);
+            emit messageToGui(message, _name, user_toList);
         }
         break;
         //
+    case comGetNewMessages:
+    {
+        QString lastDate;
+        in>>lastDate;
+        _serv->doSendNewMessages(lastDate,_name);
+    }
+        break;
+
     case comLoadArchive:
     {
         QString name_user;
         QString name_user_to_load;
         in>>name_user;
         in>>name_user_to_load; 
-        _serv->doSendArchive(name_user_to_load,name_user);
+        _serv->doSendArchive(name_user, name_user_to_load);
         //
     }
     break;
@@ -225,6 +212,16 @@ void MyClient::onReadyRead()
         _serv->doUpdatePassword(name_user,newpass);
     }
         break;
+    case comSaveImagelUser:
+    {
+        QString name_user;
+        QByteArray inByteArray;
+        in>>name_user;
+        in>>inByteArray;
+        _serv->doSetImageUser(name_user,inByteArray);
+    }
+        break;
+
     case comGetPersonalInfo:
     {
         QString name_user;
@@ -235,6 +232,7 @@ void MyClient::onReadyRead()
 
     }
         break;
+
 }
     //for (long long i = 0; i < 4000000000; ++i){}
 }
@@ -244,28 +242,40 @@ void MyClient::doSendCommand(quint8 comm) const
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     out << (quint16)0;
-    out << comm;
-    out.device()->seek(0);
-    out << (quint16)(block.size() - sizeof(quint16));
-    _sok->write(block);
-    qDebug() << "Send to" << _name << "command:" << comm;
-}
+    out << (quint8) comm;
 
-void MyClient::doSendUsersOnline() const
-{
-    QByteArray block;
-    QDataStream out(&block, QIODevice::WriteOnly);
-    out << (quint16)0;
-    out << comUsersOnline;
-    QStringList l = _serv->getUsersOnline();
-    QString s;
-    for (int i = 0; i < l.length(); ++i)
-        if (l.at(i) != _name)
-            s += l.at(i)+(QString)",";
-    s.remove(s.length()-1, 1);
-    out << s;
+    switch (comm) {
+    case comUsersOnline:
+    {
+
+        QStringList l = _serv->getUsersOnline();
+        QByteArray byteImageArray;
+        QString s;
+        for (int i = 0,k=0; i < l.length(); ++i,++k)
+            if (l.at(i) != _name)
+            {
+                s += l.at(i)+(QString)",";
+            }
+        s.remove(s.length()-1, 1);
+        out << s;
+        for (int i = 0,k=0; i < l.length(); ++i,++k)
+            if (l.at(i) != _name)
+            {
+                byteImageArray=_serv->doGetImageUser(l.at(i));
+                out << byteImageArray;
+            }
+    }
+        break;
+    case comAuthSuccess:
+    {
+
+    }
+        break;
+    default:
+        break;
+    }
+
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
     _sok->write(block);
-    qDebug() << "Send user list to" << _name << ":" << s;
 }

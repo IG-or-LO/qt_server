@@ -1,11 +1,16 @@
 #include "server.h"
 #include <QDataStream>
+#include <QDateTime>
+
+#include <QBuffer>
+#include <QPixmap>
 
 Server::Server(QWidget *widget, QObject *parent) :QTcpServer(parent)
 {
     _widget = widget;
     db=new DataBase;
     db->connectToDataBase();
+    getShablonImage();
 }
 
 bool Server::doStartServer(QHostAddress addr, qint16 port)
@@ -24,7 +29,7 @@ void Server::doSendToAllUserJoin(QString name)
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     //
-    out << (quint16)0 << MyClient::comUserJoin << name;
+    out << (quint16)0 << MyClient::comUserJoin << name <<doGetImageUser(name);
     //
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
@@ -82,42 +87,30 @@ void Server::doSendServerMessageToUsers(QString message, const QStringList &user
             _clients.at(j)->_sok->write(block);
 }
 
-void Server::doSendMessageToUsers(QString message, const QStringList &users, QString fromUsername)
+void Server::doSendMessageToUsers(QString message, const QStringList &users_to, QString fromUsername)
 {
-    //add mask to message
-    QString messin="n"+message;
-    QString messout="t"+message;
-    for (int i=0;i<messin.size();i++) {
-        if(messin[i]=='\n')
-        {
-            messin.insert(i+1,'n');
-            messout.insert(i+1,'t');
-        }
-    }
+    QDateTime date;
+    date=date.currentDateTime();
 
-    //
+    qDebug()<<"next step try to insert this mess to db";
+    db->insertIntoMessageTable(fromUsername,users_to[0],message,date.toString());
+     //send to user_to
     QByteArray block, blockToSender;
     QDataStream out(&block, QIODevice::WriteOnly);
-    out << (quint16)0 << MyClient::comMessageToUsers << fromUsername << message;
+    out << (quint16)0 << MyClient::comMessageToUsers << fromUsername << message<<date;
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
-    //
-    qDebug()<<"next step try to insert this mess to db";
-    db->InsertIntoArchiveMessageTable(fromUsername,users[0],messout);
-    qDebug()<<"next step try to insert this mess to user_comming";
-    db->InsertIntoArchiveMessageTable(users[0],fromUsername,messin);
-    //
+
+
+
     QDataStream outToSender(&blockToSender, QIODevice::WriteOnly);
-    outToSender << (quint16)0 << MyClient::comMessageToUsers << users.join(",") << message;
+    outToSender << (quint16)0 << MyClient::comMessageToUsers << users_to.join(",") << message<<date;
     outToSender.device()->seek(0);
     outToSender << (quint16)(blockToSender.size() - sizeof(quint16));
-    //save to archive
 
     for (int j = 0; j < _clients.length(); ++j)
-        if (users.contains(_clients.at(j)->getName()))
+        if (users_to.contains(_clients.at(j)->getName()))
             _clients.at(j)->_sok->write(block);
-//        else if (_clients.at(j)->getName() == fromUsername)
-//            _clients.at(j)->_sok->write(blockToSender);
 }
 
 QStringList Server::getUsersOnline() const
@@ -129,22 +122,9 @@ QStringList Server::getUsersOnline() const
     return l;
 }
 
-bool Server::isNameAndPassValid(QString name,QString pass) const
-{
-    if (name.length() > 20 || name.length() < 5)
-        return false;
-    if (pass.length() > 20 || pass.length() < 5)
-        return false;
 
-    QRegExp r("[A-Za-z0-9_]+");
-    if(r.exactMatch(name) && r.exactMatch(pass))
-        return true;
-    else
-        return false;
 
-}
-
-bool Server::isNameUsed(QString name, QString pass) const
+bool Server::isNameUsed(QString name, QString pass, QString mail, QString phone) const
 {
     qDebug()<<"query check this name="<<name;
     if( db->check_name_exist(name)){
@@ -152,9 +132,8 @@ bool Server::isNameUsed(QString name, QString pass) const
         return true;
     }
     else
-    {qDebug()<<"query return false, no such name in db";
-        db->inserIntoMainTable(name,pass);
-        db->createArchiveMessageTable(name);
+    {
+        db->insertIntoUsersTable(name,pass,mail,_shablonImageByteArray, phone);
         return false;
     }
 
@@ -168,19 +147,39 @@ bool Server::isNameAndPassTrue(QString name, QString pass) const
         return true;
     }
     else
-    {qDebug()<<"query return false, no such log and pass";
+    {
+        qDebug()<<"query return false, no such log and pass";
         return false;
     }
 }
 
-void Server::doSendArchive(QString name_user_to_load, QString name_user) const
+void Server::doSendNewMessages(QString last_date, QString name_user_to_load)
 {
-    QString messages;
-    qDebug()<<"try to load archive from db...";
-    messages=db->loadArchiveMessages(name_user,name_user_to_load);
+    QStringList malesDataStatusFrom;
+    qDebug()<<"try to load new messages to "<<name_user_to_load;
+    malesDataStatusFrom=db->loadNewMessages(last_date,name_user_to_load);
+    qDebug()<<"new messages: "<<malesDataStatusFrom;
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
-    out << (quint16)0 << MyClient::comLoadArchive << messages;
+    out << (quint16)0 << MyClient::comGetNewMessages << malesDataStatusFrom;
+    out.device()->seek(0);
+    out << (quint16)(block.size() - sizeof(quint16));
+    for (int i = 0; i < _clients.length(); ++i)
+        if (_clients.at(i)->getName()==name_user_to_load)
+        {
+            _clients.at(i)->_sok->write(block);
+            return;
+        }
+}
+
+void Server::doSendArchive(QString name_user, QString name_user_to_load) const
+{
+    QStringList malesDataStatusFrom;
+    qDebug()<<"try to load archive from db...";
+    malesDataStatusFrom=db->loadArchiveMessages(name_user,name_user_to_load);
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    out << (quint16)0 << MyClient::comLoadArchive << malesDataStatusFrom;
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
     for (int i = 0; i < _clients.length(); ++i)
@@ -193,7 +192,7 @@ void Server::doSendArchive(QString name_user_to_load, QString name_user) const
 
 void Server::doUpdatePersonalInfo(QString name_user, QString name_add, QString surname_add, QString aboutme_add) const
 {
-    db->UpdatePersonalInfoIntoMainTable(name_user,name_add,surname_add,aboutme_add);
+    db->updatePersonalInfoUsersTable(name_user,name_add,surname_add,aboutme_add);
 }
 
 void Server::doUpdatePassword(QString name_user, QString newpass) const
@@ -206,15 +205,15 @@ void Server::doGetPersonalInfo(QString name_user, QString name_user_to_load) con
     QString name;
     QString surname;
     QString about;
+    QByteArray inByteArray;
     name=db->getPersonalInfo(name_user_to_load,0);
     surname=db->getPersonalInfo(name_user_to_load,1);
     about=db->getPersonalInfo(name_user_to_load,2);
-    qDebug()<<"From bd NAME IS:"<<name<<" surname: "<<surname<<" about: "<<about;
-
+    inByteArray=db->getImageUser(name_user_to_load);
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     //
-    out << (quint16)0 << MyClient::comGetPersonalInfo << name<<surname<<about;
+    out << (quint16)0 << MyClient::comGetPersonalInfo << name<<surname<<about<<inByteArray;
     //
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
@@ -225,6 +224,42 @@ void Server::doGetPersonalInfo(QString name_user, QString name_user_to_load) con
             _clients.at(i)->_sok->write(block);
             return;
         }
+}
+
+//void Server::doGetPersonalInfoAterAuth(QString name_user) const
+//{
+//    QString name;
+//    QString surname;
+//    QString about;
+//    QByteArray inByteArray;
+//    name=db->getPersonalInfo(name_user,0);
+//    surname=db->getPersonalInfo(name_user,1);
+//    about=db->getPersonalInfo(name_user,2);
+//    inByteArray=db->getImageUser(name_user);
+//    QByteArray block;
+//    QDataStream out(&block, QIODevice::WriteOnly);
+//    //
+//    out << (quint16)0 << MyClient::comAuthSuccess << name<<surname<<about<<inByteArray;
+//    //
+//    out.device()->seek(0);
+//    out << (quint16)(block.size() - sizeof(quint16));
+//    //
+//    for (int i = 0; i < _clients.length(); ++i)
+//        if (_clients.at(i)->getName()==name_user)
+//        {
+//            _clients.at(i)->_sok->write(block);
+//            return;
+//        }
+//}
+
+void Server::doSetImageUser(QString name_user, QByteArray inByteArray) const
+{
+    db->setImageUser(name_user,inByteArray);
+}
+
+QByteArray Server::doGetImageUser(QString name_user_to_load) const
+{
+   return db->getImageUser(name_user_to_load);
 }
 
 void Server::incomingConnection(qintptr handle)
@@ -239,6 +274,14 @@ void Server::incomingConnection(qintptr handle)
 //    }
     connect(client, SIGNAL(removeUser(MyClient*)), this, SLOT(onRemoveUser(MyClient*)));
     _clients.append(client);
+}
+
+void Server::getShablonImage()
+{
+    QPixmap image=QPixmap(":/resources/images/shablon_image.png");
+    QBuffer inBuffer( &_shablonImageByteArray );
+    inBuffer.open(QIODevice::WriteOnly);
+    image.save(&inBuffer, "PNG");
 }
 
 

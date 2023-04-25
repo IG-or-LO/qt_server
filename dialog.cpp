@@ -6,14 +6,14 @@ Dialog::Dialog(QWidget *parent) :QDialog(parent), ui(new Ui::Dialog)
 {
     ui->setupUi(this);
 
-    //������� ������
+
     _serv = new Server(this, this);
 
     //
     connect(this, SIGNAL(messageFromGui(QString,QStringList)), _serv, SLOT(onMessageFromGui(QString,QStringList)));
     connect(_serv, SIGNAL(addLogToGui(QString,QColor)), this, SLOT(onAddLogToGui(QString,QColor)));
 
-    //�� ��������� ��������� ������ �� 127.0.0.1:1234
+    //127.0.0.1:1234
     if (_serv->doStartServer(QHostAddress::LocalHost, 1234))
     {
         ui->lwLog->insertItem(0, QTime::currentTime().toString()+" server strated at "+_serv->serverAddress().toString()+":"+QString::number(_serv->serverPort()));

@@ -28,14 +28,16 @@ public:
     static const quint8 comMessageToUsers = 6;
     static const quint8 comPublicServerMessage = 7;
     static const quint8 comPrivateServerMessage = 8;
-    static const quint8 comAutchSuccess = 9;
+    static const quint8 comAuthSuccess = 9;
     static const quint8 comLoadArchive=10;
     static const quint8 comSavePersonalInfo = 11;
     static const quint8 comUpdatePassword = 12;
     static const quint8 comGetPersonalInfo = 13;
-    static const quint8 comErrNameOrPassInvalid = 201;
-    static const quint8 comErrNameUsed = 202;
-    static const quint8 comErrNameOrPassFalse = 203;
+    static const quint8 comSaveImagelUser = 14;
+    static const quint8 comRegSuccess=15;
+    static const quint8 comGetNewMessages=16;
+    static const quint8 comErrNameUsed = 201;
+    static const quint8 comErrNameOrPassFalse = 202;
 
     explicit MyClient(int desc, Server *serv, QObject *parent = 0);
     ~MyClient();
@@ -44,7 +46,6 @@ public:
     QString getName() const {return _name;}
     bool getAutched() const {return _isAutched;}
     void doSendCommand(quint8 comm) const;
-    void doSendUsersOnline() const;
 
 signals:
     void addUserToGui(QString name);
@@ -64,7 +65,6 @@ private:
     quint16 _blockSize;
     QString _name;
     bool _isAutched;
-
 };
 
 #endif // MYCLIENT_H

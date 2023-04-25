@@ -31,17 +31,23 @@ bool DataBase::connectToDataBase()
  * */
 bool DataBase::restoreDataBase()
 {
-    if(this->openDataBase()){
-        if(!this->createMainTable()){
-            return false;
-        } else {
+    if(this->openDataBase())
+    {
+        if(createUsersTable() && createChatGroupsTable() && createGroupParticipantsTable()
+                && createArchiveMessageTable() && createStatusMessageTable()
+                && createTriggerOnMessageTable())
+        {
             return true;
+        } else {
+            qDebug() << "Не удалось создать одну из таблиц";
+            return false;
         }
-    } else {
+    }
+    else
+    {
         qDebug() << "Не удалось восстановить базу данных";
         return false;
     }
-    return false;
 }
 
 /* Метод для открытия базы данных
@@ -54,10 +60,7 @@ bool DataBase::openDataBase()
     db = QSqlDatabase::addDatabase("QSQLITE");//QSQLITE
     db.setHostName(DATABASE_HOSTNAME);
     db.setDatabaseName("./" DATABASE_NAME);
-  //
-  //  db.setUserName("root");
-  //  db.setPassword("1481814Razor");
-    //
+
     if(db.open()){
         return true;
     } else {
@@ -74,22 +77,23 @@ void DataBase::closeDataBase()
 
 /* Метод для создания таблицы пользователей в базе данных
  * */
-bool DataBase::createMainTable()
+bool DataBase::createUsersTable()
 {
-    /* В данном случае используется формирование сырого SQL-запроса
-     * с последующим его выполнением.
-     * */
     QSqlQuery query;
-    if(!query.exec( "CREATE TABLE " SERVER  " ("
-                            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                            SERVER_NICKNAME     " VARCHAR   NOT NULL,"
-                            SERVER_PASSWORD     " VARCHAR   NOT NULL,"
-                            SERVER_NAME         " VARCHAR ,"
-                            SERVER_SURNAME      " VARCHAR ,"
-                            SERVER_ABOUT        " VARCAHR "
+    if(!query.exec( "CREATE TABLE " USERS_TABLE  " ("
+                            USER_ID " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                            USER_NICKNAME     " VARCHAR   NOT NULL,"
+                            USER_PASSWORD     " VARCHAR   NOT NULL,"
+                            USER_MAIL         " VARCHAR   NOT NULL,"
+                            USER_NAME         " VARCHAR ,"
+                            USER_SURNAME      " VARCHAR ,"
+                            USER_IMAGE        " BLOB ,"
+                            USER_DESCRIPTION  " VARCAHR ,"
+                            USER_PHONE        " VARCHAR ,"
+                            "UNIQUE (" USER_NICKNAME "," USER_MAIL "," USER_PHONE ")"
                              " )"
                     )){
-        qDebug() << "DataBase: error of create " <<SERVER;
+        qDebug() << "DataBase: error of create " <<USERS_TABLE;
         qDebug() << query.lastError().text();
         return false;
     } else {
@@ -98,16 +102,15 @@ bool DataBase::createMainTable()
     return false;
 }
 
-bool DataBase::createArchiveMessageTable(QString user_name)
+bool DataBase::createChatGroupsTable()
 {
     QSqlQuery query;
-    QString str=QString("CREATE TABLE '"+user_name+"' ("
-                                                   "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                                                   "ANOTHER_USER INTEGER,"
-                                                   "MAILS VARCHAR,"
-                                                   "FOREIGN KEY (ANOTHER_USER) REFERENCES "
-                                                   "" SERVER " (id) )");
-    qDebug()<< "CREATE DATABASE "<<user_name;
+    QString str=QString("CREATE TABLE " CHAT_TABLE " ("
+                                                 " " CHAT_ID " INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                 " " CHAT_NAME " VARCHAR NOT NULL,"
+                                                 " " CHAT_USER_CREATE_ID " INTEGER NOT NULL, "
+                                                 "FOREIGN KEY (" CHAT_USER_CREATE_ID ") REFERENCES " USERS_TABLE " (" USER_ID ") ON DELETE CASCADE )");
+    qDebug()<< "CREATE DATABASE " CHAT_TABLE "";
     if(query.exec(str))
         return true;
     else
@@ -115,20 +118,18 @@ bool DataBase::createArchiveMessageTable(QString user_name)
         qDebug()<<query.lastError();
         return false;
     }
-
 }
 
-
-bool DataBase::InsertIntoArchiveMessageTable(QString user_name_table, QString user_id_name,QString message)
+bool DataBase::createNewChat(const QString &name_user_create, const QString &chatname)
 {
     QSqlQuery query;
-    QString str=QString("INSERT INTO '"+user_name_table+"'"
-                                                        "(ANOTHER_USER, MAILS)"
+    QString str=QString("INSERT INTO " CHAT_TABLE " "
+                                                        "(" CHAT_NAME ", " CHAT_USER_CREATE_ID ")"
                                                         "VALUES("
-                                                        "(SELECT NICKNAME FROM " SERVER " WHERE " SERVER_NICKNAME " = '"+user_id_name+"'),"
-                                                        "('"+message+"')  "
-                                                        ") ");
-    qDebug()<< "try insert into db- "<<user_name_table<<" this meesage= "<<message;
+                                                        "('"+chatname+"'), "
+                                                        "(SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_ID " = '"+name_user_create+"') "//дописать
+                                                        " ");
+    qDebug()<< "try insert into table- "<<CHAT_TABLE<<" this chatname= "<<chatname;
     if(query.exec(str))
         return true;
     else
@@ -138,31 +139,261 @@ bool DataBase::InsertIntoArchiveMessageTable(QString user_name_table, QString us
     }
 }
 
-QString DataBase::loadArchiveMessages(QString user_name_table, QString user_id_name)
+bool DataBase::createGroupParticipantsTable()
 {
     QSqlQuery query;
-    QString males="";
+    QString str=QString("CREATE TABLE " PARTICIPANTS_TABLE " ("
+                                                 " " CHAT_ID " INTEGER NOT NULL,"
+                                                 " " USER_ID " INTEGER NOT NULL,"
+                                                 "FOREIGN KEY (" CHAT_ID ") REFERENCES " CHAT_TABLE " (" CHAT_ID ") ON DELETE CASCADE "
+                                                 "FOREIGN KEY (" USER_ID ") REFERENCES " USERS_TABLE " (" USER_ID ") ON DELETE CASCADE )"  );
+    qDebug()<< "CREATE DATABASE " PARTICIPANTS_TABLE "";
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
 
-    QString str = QString("SELECT MAILS FROM "+user_name_table+" WHERE ANOTHER_USER = '"+user_id_name+"'  ");
+bool DataBase::createNewGroupParticipants(const QString chatname, const QString &userID)
+{
+    QSqlQuery query;
+    QString str=QString("INSERT INTO " PARTICIPANTS_TABLE " "
+                                                        "(" CHAT_ID ", " USER_ID ")"
+                                                        "VALUES("
+                                                        "(SELECT " CHAT_ID " FROM " CHAT_TABLE " WHERE  " CHAT_NAME " = '"+chatname+"' ), "
+                                                        "(SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_ID " = '"+userID+"') "//дописать
+                                                        " ");
+    qDebug()<< "try insert into table- "<<PARTICIPANTS_TABLE<<" this chatname= "<<chatname;
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
+
+bool DataBase::createArchiveMessageTable()
+{
+    QSqlQuery query;
+    QString str=QString("CREATE TABLE " MESSAGE_TABLE " ("
+                                                 " " MESSAGE_ID " INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                 " " MESSAGE_TOID " INTEGER NOT NULL,"
+                                                 " " MESSAGE_FROMID " INTEGER NOT NULL,"
+                                                 " " CHAT_ID " INTEGER ,"
+                                                 " " MESSAGE_CONTENT " VARCHAR ,"
+                                                 " " MESSAGE_DATA " VARCHAR NOT NULL, "
+                                                 "FOREIGN KEY (" MESSAGE_TOID ") REFERENCES " USERS_TABLE " (" USER_ID ") ON DELETE CASCADE "
+                                                 "FOREIGN KEY (" MESSAGE_FROMID ") REFERENCES " USERS_TABLE " (" USER_ID ") ON DELETE CASCADE "
+                                                 "FOREIGN KEY (" CHAT_ID ") REFERENCES " CHAT_TABLE " (" CHAT_ID ") ON DELETE CASCADE )" );
+    qDebug()<< "CREATE DATABASE " MESSAGE_TABLE "";
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
+
+bool DataBase::createStatusMessageTable()
+{
+    QSqlQuery query;
+    QString str=QString("CREATE TABLE " STATUS_MESS_TABLE " ("
+                                                 " " MESSAGE_ID " INTEGER NOT NULL,"
+                                                 " " USER_ID " INTEGER NOT NULL,"
+                                                 " " STATUS_MESSAGE " VARCHAR NOT NULL,"
+                                                 "FOREIGN KEY (" MESSAGE_ID ") REFERENCES " MESSAGE_TABLE " (" MESSAGE_ID ") ON DELETE CASCADE "
+                                                 "FOREIGN KEY (" USER_ID ") REFERENCES " USERS_TABLE " (" USER_ID ") ON DELETE CASCADE )" );
+    qDebug()<< "CREATE DATABASE " STATUS_MESS_TABLE "";
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
+
+bool DataBase::createTriggerOnMessageTable()
+{
+    QSqlQuery query;
+    QString str=QString("CREATE TRIGGER add_status_message AFTER INSERT"
+                        " ON " MESSAGE_TABLE " BEGIN"
+                        " INSERT INTO " STATUS_MESS_TABLE " "
+                        " (" MESSAGE_ID ", " USER_ID ", " STATUS_MESSAGE ")"
+                        " VALUES (NEW." MESSAGE_ID ", NEW." MESSAGE_FROMID ", 'send'),"
+                        " (NEW." MESSAGE_ID ", NEW." MESSAGE_TOID ", 'notread');"
+                        " END; ");
+    qDebug()<< "CREATE TRIGGER ON " MESSAGE_TABLE "";
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
+
+
+bool DataBase::insertIntoMessageTable(const QString &user_from,const QString &user_to, const QString &message, const QString &data)
+{
+    QSqlQuery query;
+    QString str=QString("INSERT INTO " MESSAGE_TABLE " "
+                                                        "(" MESSAGE_FROMID ", " MESSAGE_TOID ", " MESSAGE_CONTENT ", " MESSAGE_DATA ")"
+                                                        "VALUES("
+                                                        "(SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_from+"'),"//дописать
+                                                        "(SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_to+"'),"
+                                                        "('"+message+"'),"
+                                                        "('"+data+"')"
+                                                        ") ");
+    qDebug()<< "try insert into table- "<<MESSAGE_TABLE<<" this meesage= "<<message;
+    if(query.exec(str))
+        return true;
+    else
+    {
+        qDebug()<<query.lastError();
+        return false;
+    }
+}
+
+QStringList DataBase::loadNewMessages(const QString &last_date, const QString &user_to_load)
+{
+    QSqlQuery query;
+    QStringList malesDataStatusFrom;
+
+    QString str = QString("SELECT " MESSAGE_TABLE "." MESSAGE_CONTENT ","
+                          " " MESSAGE_TABLE "." MESSAGE_DATA ", "
+                          " " STATUS_MESS_TABLE "." STATUS_MESSAGE ", "
+                          " " USERS_TABLE "." USER_NICKNAME " "
+                          " FROM " MESSAGE_TABLE " "
+                          " JOIN " STATUS_MESS_TABLE "," USERS_TABLE " "
+                          " ON " STATUS_MESS_TABLE "." MESSAGE_ID " = " MESSAGE_TABLE "." MESSAGE_ID " "
+                          " AND " STATUS_MESS_TABLE "." USER_ID " =(SELECT " USER_ID " FROM " USERS_TABLE " "
+                          " WHERE " USER_NICKNAME "='"+user_to_load+"' ) "
+                          " AND " MESSAGE_TABLE "." MESSAGE_DATA " >'"+last_date+"' "
+                          " AND " USERS_TABLE "." USER_NICKNAME "=(SELECT " USER_NICKNAME " "
+                          "FROM " USERS_TABLE " WHERE " USER_ID "= " MESSAGE_TABLE "." MESSAGE_FROMID " ) "
+                          " ORDER BY " MESSAGE_TABLE "." MESSAGE_DATA "; ");
+          query.prepare(str);
+          query.exec();
+
+         if(query.isActive()){
+             qDebug()<<"query is active now";
+             while(query.next())
+             {
+                 malesDataStatusFrom.append(query.value(0).toString());
+                 malesDataStatusFrom.append(query.value(1).toString());
+                 malesDataStatusFrom.append(query.value(2).toString());
+                 malesDataStatusFrom.append(query.value(3).toString());
+             }
+         }
+         else
+             qDebug()<<"ERROR:"<<query.lastError();
+
+         return malesDataStatusFrom;
+}
+
+
+//дописать условия на референс в таблицу по имени пользователя!!!!..может юыть уже дописано
+QStringList DataBase::loadArchiveMessages(const QString &user_from,const QString &user_to)
+{
+  QSqlQuery query;
+  QStringList malesDataStatusFromTo;
+
+
+
+  QString str = QString("SELECT " MESSAGE_TABLE "." MESSAGE_CONTENT ","
+                        " " MESSAGE_TABLE "." MESSAGE_DATA ", "
+                        " " STATUS_MESS_TABLE "." STATUS_MESSAGE ", "
+                        "(SELECT " USERS_TABLE "." USER_NICKNAME " FROM " USERS_TABLE " "
+                        " WHERE " USER_ID " = " MESSAGE_TABLE "." MESSAGE_FROMID " ) AS '_from' ,"
+                        "(SELECT " USERS_TABLE "." USER_NICKNAME " FROM " USERS_TABLE " "
+                        " WHERE " USER_ID " = " MESSAGE_TABLE "." MESSAGE_TOID " ) AS '_to'"
+                        " FROM " MESSAGE_TABLE " "
+                        " JOIN " STATUS_MESS_TABLE " "
+                        " ON " STATUS_MESS_TABLE "." MESSAGE_ID " = " MESSAGE_TABLE "." MESSAGE_ID " "
+                        " AND " STATUS_MESS_TABLE "." USER_ID " = " MESSAGE_TABLE "." MESSAGE_TOID " "
+                        " WHERE " MESSAGE_TABLE "." MESSAGE_FROMID " = (SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_from+"') "
+                        " AND " MESSAGE_TABLE "." MESSAGE_TOID " = (SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_to+"') "
+                        " OR " MESSAGE_TABLE "." MESSAGE_FROMID " = (SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_to+"') "
+                        " AND " MESSAGE_TABLE "." MESSAGE_TOID " = (SELECT " USER_ID " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+user_from+"') "
+                        " ORDER BY " MESSAGE_TABLE "." MESSAGE_DATA "; ");
+        query.prepare(str);
+        query.exec();
+
+       if(query.isActive()){
+           qDebug()<<"query is active now";
+           while(query.next())
+           {
+               malesDataStatusFromTo.append(query.value(0).toString());
+               malesDataStatusFromTo.append(query.value(1).toString());
+               malesDataStatusFromTo.append(query.value(2).toString());
+               malesDataStatusFromTo.append(query.value(3).toString());
+               malesDataStatusFromTo.append(query.value(4).toString());
+           }
+       }
+       else
+           qDebug()<<"ERROR:"<<query.lastError();
+
+       return malesDataStatusFromTo;
+
+}
+
+QByteArray DataBase::getImageUser(const QString &name_user_to_load)
+{
+    QByteArray image;
+
+    QSqlQuery query;
+    QString str = QString("SELECT " USER_IMAGE " FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+name_user_to_load+"'  ");
     query.prepare(str);
     query.exec();
 
-   if(query.isActive()){
-       qDebug()<<"query is active now";
-       while(query.next())
-       {
-           males.append(query.value(0).toString());
-           males.append("\n");
-       }
-   }
-   else
-       qDebug()<<"ERROR:"<<query.lastError();
+    if(query.first())
+        image=query.value(0).toByteArray();
+    else
+        qDebug()<<query.lastError();
 
-   return males;
+    return image;
 }
 
-QString DataBase::getPersonalInfo(QString name_user_to_load, int name_surname_or_about)
+bool DataBase::setImageUser(const QString &name_user_to_load, const QByteArray &inByteArray)
 {
+    QSqlQuery query;
+
+    query.prepare(" UPDATE " USERS_TABLE " SET " USER_IMAGE " = :IMAGESET "
+                                            "WHERE " USER_NICKNAME " = :NICKNAMESET ");
+    query.bindValue(":IMAGESET",  inByteArray);
+    query.bindValue(":NICKNAMESET",  name_user_to_load);
+
+    // После чего выполняется запросом методом exec()
+    if(!query.exec()){
+        qDebug() << "error insert image in to " << USERS_TABLE;
+        qDebug() << query.lastError().text();
+        return false;
+    } else {
+        return true;
+    }
+    return false;
+
+}
+
+bool DataBase::updateStatusMessageTable(const QString mess_id, const QString user, const QString status)
+{
+
+}
+
+QString DataBase::getStatusMessage(const QString mess_id, const QString user)
+{
+
+}
+//переписать
+QString DataBase::getPersonalInfo(const QString &name_user_to_load,const int &name_surname_or_about)
+{
+    qDebug()<<"try get personInfo";
     QString colomn;
     QString mess;
     if(name_surname_or_about==0)
@@ -170,10 +401,10 @@ QString DataBase::getPersonalInfo(QString name_user_to_load, int name_surname_or
     else if(name_surname_or_about==1)
         colomn="SURNAME";
     else if(name_surname_or_about==2)
-        colomn="ABOUT";
+        colomn="DESCRIPTION";
 
     QSqlQuery query;
-    QString str = QString("SELECT "+colomn+" FROM " SERVER " WHERE NICKNAME = '"+name_user_to_load+"'  ");
+    QString str = QString("SELECT "+colomn+" FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+name_user_to_load+"'  ");
     query.prepare(str);
     query.exec();
 
@@ -186,26 +417,27 @@ QString DataBase::getPersonalInfo(QString name_user_to_load, int name_surname_or
 
 }
 
-
-
-/* Метод для вставки записи в таблицу пользователей
- * */
-bool DataBase::inserIntoMainTable(const QString nickname, const QString password)
+bool DataBase::insertIntoUsersTable(const QString &nickname, const QString &password, const QString &mail, const QByteArray &shablonImage, const QString &phone)
 {
-
     QSqlQuery query;
     /* В начале SQL запрос формируется с ключами,
      * которые потом связываются методом bindValue
      * для подстановки данных из QVariantList
      * */
-    query.prepare("INSERT INTO " SERVER " ( " SERVER_NICKNAME ", "
-                                              SERVER_PASSWORD ") "
-                  "VALUES (:NICKNAME, :PASSWORD )");
+    query.prepare("INSERT INTO " USERS_TABLE " ( " USER_NICKNAME ", "
+                                              USER_PASSWORD ","
+                                              USER_MAIL ","
+                                              USER_PHONE ","
+                                              USER_IMAGE " ) "
+                  "VALUES (:NICKNAME, :PASSWORD, :MAIL, :PHONE, :IMAGE )");
     query.bindValue(":NICKNAME",  nickname);
     query.bindValue(":PASSWORD",  password);
+    query.bindValue(":MAIL",  mail);
+    query.bindValue(":PHONE",  phone);
+    query.bindValue(":IMAGE",  shablonImage);
     // После чего выполняется запросом методом exec()
     if(!query.exec()){
-        qDebug() << "error insert into " << SERVER;
+        qDebug() << "error insert into " << USERS_TABLE;
         qDebug() << query.lastError().text();
         return false;
     } else {
@@ -214,21 +446,17 @@ bool DataBase::inserIntoMainTable(const QString nickname, const QString password
     return false;
 }
 
-bool DataBase::UpdatePersonalInfoIntoMainTable(QString name_user, QString name_add, QString surname_add, QString about)
+bool DataBase::updatePersonalInfoUsersTable(const QString &name_user,const QString &name_add,const QString &surname_add,const QString &about)
 {
     QSqlQuery query;
-    /* В начале SQL запрос формируется с ключами,
-     * которые потом связываются методом bindValue
-     * для подстановки данных из QVariantList
-     * */
-    query.prepare("UPDATE  " SERVER " SET " SERVER_NAME" = '"+name_add+"' ,"
-                                            SERVER_SURNAME" = '"+surname_add+"' ,"
-                                            SERVER_ABOUT" = '"+about+"'"
-                                            "WHERE " SERVER_NICKNAME " = '"+name_user+"' ");
+    query.prepare(" UPDATE  " USERS_TABLE " SET " USER_NAME " = '"+name_add+"' ,"
+                                            USER_SURNAME " = '"+surname_add+"' ,"
+                                            USER_DESCRIPTION " = '"+about+"'   "
+                                            "WHERE " USER_NICKNAME " = '"+name_user+"' ");
 
     // После чего выполняется запросом методом exec()
     if(!query.exec()){
-        qDebug() << "error UPDATE INFO in " << SERVER<<"to user:"<<name_user;
+        qDebug() << "error UPDATE INFO in " << USERS_TABLE<<"to user:"<<name_user;
         qDebug() << query.lastError().text();
         return false;
     } else {
@@ -237,19 +465,15 @@ bool DataBase::UpdatePersonalInfoIntoMainTable(QString name_user, QString name_a
     return false;
 }
 
-bool DataBase::UpdatePasswordIntoMainTable(QString name_user, QString newpass)
+bool DataBase::UpdatePasswordIntoMainTable(const QString &name_user,const QString &newpass)
 {
     QSqlQuery query;
-    /* В начале SQL запрос формируется с ключами,
-     * которые потом связываются методом bindValue
-     * для подстановки данных из QVariantList
-     * */
-    query.prepare("UPDATE  " SERVER " SET " SERVER_PASSWORD" = '"+newpass+"' "
-                                   "WHERE " SERVER_NICKNAME " = '"+name_user+"' ");
+    query.prepare("UPDATE  " USERS_TABLE " SET " USER_PASSWORD" = '"+newpass+"' "
+                                   "WHERE " USER_NICKNAME " = '"+name_user+"' ");
 
     // После чего выполняется запросом методом exec()
     if(!query.exec()){
-        qDebug() << "error UPDATE PASS in " << SERVER<<"to user:"<<name_user;
+        qDebug() << "error UPDATE PASS in " << USERS_TABLE<<"to user:"<<name_user;
         qDebug() << query.lastError().text();
         return false;
     } else {
@@ -258,12 +482,12 @@ bool DataBase::UpdatePasswordIntoMainTable(QString name_user, QString newpass)
     return false;
 }
 
-bool DataBase::check_name_exist(const QString nickname)
+bool DataBase::check_name_exist(const QString &nickname)
 {
     QSqlQuery query;
-    QString names=nullptr;
-    QString str = QString("SELECT * FROM ServerTable WHERE EXISTS "
-                          "(SELECT NICKNAME FROM ServerTable WHERE NICKNAME= '"+nickname+"')");
+    QString names=nullptr;//для проверки совпадения логина
+    QString str = QString("SELECT * FROM " USERS_TABLE " WHERE EXISTS "
+                          "(SELECT " USER_NICKNAME " FROM " USERS_TABLE " WHERE " USER_NICKNAME "= '"+nickname+"')");
 
     query.prepare(str);
     query.exec();
@@ -282,13 +506,13 @@ bool DataBase::check_name_exist(const QString nickname)
     
 }
 
-bool DataBase::check_log_In(const QString nickname, const QString password)
+bool DataBase::check_log_In(const QString &nickname, const QString &password)
 {
     QSqlQuery query;
-    QString names=nullptr;
-    QString str = QString("SELECT * FROM ServerTable WHERE EXISTS "
-                          "(SELECT NICKNAME FROM ServerTable WHERE NICKNAME= '"+nickname+"'"
-                          "AND PASSWORD= '"+password+"' )");
+    QString names=nullptr;//проверка наличия логина и пароля
+    QString str = QString("SELECT * FROM " USERS_TABLE " WHERE EXISTS "
+                          "(SELECT " USER_NICKNAME " FROM " USERS_TABLE " WHERE " USER_NICKNAME "= '"+nickname+"'"
+                          "AND " USER_PASSWORD "= '"+password+"' )");
 
     query.prepare(str);
     query.exec();
