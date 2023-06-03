@@ -62,13 +62,14 @@ public:
     bool check_name_exist(const QString &nickname);
     bool check_log_In(const QString &nickname, const QString &password);
     bool insertIntoMessageTable(const QString &user_from,const QString &user_to, const QString &message, const QString &data);
-    QStringList loadNewMessages(const QString &last_date,const QString &user_to_load);
+    QVariantList loadNewMessages(const QString &last_date,const QString &user_to_load);
     QStringList loadArchiveMessages(const QString &user_from,const QString &user_to);
-    QString getPersonalInfo(const QString &name_user_to_load,const int &name_surname_or_about);
+    QVariantList getPersonalInfo(const QString &name_user_to_load);
     QByteArray getImageUser(const QString &name_user_to_load);
     bool setImageUser(const QString &name_user_to_load, const QByteArray &inByteArray);
-    bool updateStatusMessageTable(const QString mess_id,const QString user, const QString status);
+    bool updateStatusMessageTable(const QString user, const QString status);
     QString getStatusMessage(const QString mess_id,const QString user);
+    QVariantList getUsersBySearchText(const QString text_search);
 private:
     // Сам объект базы данных, с которым будет производиться работа
     QSqlDatabase    db;

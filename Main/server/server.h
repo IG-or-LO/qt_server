@@ -8,6 +8,8 @@
 #include "database.h"
 #include "myclient.h"
 
+#include <encryption.h>
+
 class MyClient;
 
 
@@ -23,7 +25,7 @@ public:
     void doSendToAllMessage(QString message, QString fromUsername);
     void doSendToAllServerMessage(QString message);
     void doSendServerMessageToUsers(QString message, const QStringList &users);
-    void doSendMessageToUsers(QString message, const QStringList &users_to, QString fromUsername);
+    void doSendMessageToUser(QString message, QString user_to, QString fromUsername);
     QStringList getUsersOnline() const;
     bool isNameUsed(QString name, QString pass, QString mail, QString phone="") const;
     bool isNameAndPassTrue(QString name, QString pass) const;
@@ -32,6 +34,8 @@ public:
     void doUpdatePersonalInfo(QString name_user, QString name_add,QString surname_add,QString aboutme_add) const;
     void doUpdatePassword(QString name_user, QString newpass) const;
     void doGetPersonalInfo(QString name_user, QString name_user_to_load) const;
+    void doSearchUsers(QString name_user, QString text_search) const;
+    void doUpdateStatusMess(QString name_user, QString loginUserToUpdate) const;
    // void doGetPersonalInfoAterAuth(QString name_user) const;
     void doSetImageUser(QString name_user, QByteArray inByteArray) const;
     QByteArray doGetImageUser(QString name_user_to_load) const;
@@ -49,6 +53,7 @@ protected:
 
 private:
     DataBase        *db;
+    Encryption *encrypt;
     QList<MyClient *> _clients;
     QWidget *_widget;
 

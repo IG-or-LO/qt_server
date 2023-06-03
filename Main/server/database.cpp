@@ -260,15 +260,16 @@ bool DataBase::insertIntoMessageTable(const QString &user_from,const QString &us
     }
 }
 
-QStringList DataBase::loadNewMessages(const QString &last_date, const QString &user_to_load)
+QVariantList DataBase::loadNewMessages(const QString &last_date, const QString &user_to_load)
 {
     QSqlQuery query;
-    QStringList malesDataStatusFrom;
+    QVariantList malesDataStatusFromImage;
 
     QString str = QString("SELECT " MESSAGE_TABLE "." MESSAGE_CONTENT ","
                           " " MESSAGE_TABLE "." MESSAGE_DATA ", "
                           " " STATUS_MESS_TABLE "." STATUS_MESSAGE ", "
-                          " " USERS_TABLE "." USER_NICKNAME " "
+                          " " USERS_TABLE "." USER_NICKNAME ", "
+                          " " USERS_TABLE "." USER_IMAGE " "
                           " FROM " MESSAGE_TABLE " "
                           " JOIN " STATUS_MESS_TABLE "," USERS_TABLE " "
                           " ON " STATUS_MESS_TABLE "." MESSAGE_ID " = " MESSAGE_TABLE "." MESSAGE_ID " "
@@ -285,16 +286,17 @@ QStringList DataBase::loadNewMessages(const QString &last_date, const QString &u
              qDebug()<<"query is active now";
              while(query.next())
              {
-                 malesDataStatusFrom.append(query.value(0).toString());
-                 malesDataStatusFrom.append(query.value(1).toString());
-                 malesDataStatusFrom.append(query.value(2).toString());
-                 malesDataStatusFrom.append(query.value(3).toString());
+                 malesDataStatusFromImage.append(query.value(0).toString());
+                 malesDataStatusFromImage.append(query.value(1).toString());
+                 malesDataStatusFromImage.append(query.value(2).toString());
+                 malesDataStatusFromImage.append(query.value(3).toString());
+                 malesDataStatusFromImage.append(query.value(4).toByteArray());
              }
          }
          else
              qDebug()<<"ERROR:"<<query.lastError();
 
-         return malesDataStatusFrom;
+         return malesDataStatusFromImage;
 }
 
 
@@ -381,39 +383,85 @@ bool DataBase::setImageUser(const QString &name_user_to_load, const QByteArray &
 
 }
 
-bool DataBase::updateStatusMessageTable(const QString mess_id, const QString user, const QString status)
+bool DataBase::updateStatusMessageTable(const QString user, const QString status)
 {
+    qDebug()<<"TRY TO update status for user"<<user;
+    QSqlQuery query;
+    query.prepare(" UPDATE  " STATUS_MESS_TABLE " SET " STATUS_MESSAGE " = '"+status+"' "
+                                            "WHERE " USER_ID " ="
+                                            "(SELECT " USER_ID " FROM " USERS_TABLE " WHERE "
+                                            " " USER_NICKNAME " =  '"+user+"' ) "
+                                            " AND " STATUS_MESSAGE " !='send' ");
 
+    // После чего выполняется запросом методом exec()
+    if(!query.exec()){
+        qDebug() << "error UPDATE INFO in " << STATUS_MESS_TABLE<<"to user:"<<user;
+        qDebug() << query.lastError().text();
+        return false;
+    } else {
+        return true;
+    }
+    return false;
 }
 
 QString DataBase::getStatusMessage(const QString mess_id, const QString user)
 {
 
 }
+
+QVariantList DataBase::getUsersBySearchText(const QString text_search)
+{
+    qDebug()<<"try get usersBySearch";
+    QVariantList usernameAndImage;
+    QString str="%"+text_search+"%";
+    qDebug()<<"cтрока поиска"<<str;
+    QSqlQuery query;
+    query.prepare("SELECT " USER_NICKNAME "," USER_IMAGE " FROM " USERS_TABLE " WHERE " USER_NICKNAME " like :SEARCH  ");
+    query.bindValue(":SEARCH",str);
+
+    query.exec();
+
+    if(query.isActive())
+    {
+        qDebug()<<"query searchUsers is active now";
+        while(query.next())
+        {
+            usernameAndImage.append(query.value(0));
+            usernameAndImage.append(query.value(1));
+        }
+    }
+    else
+        qDebug()<<"Error searchUsers"<<query.lastError();
+
+    return usernameAndImage;
+}
 //переписать
-QString DataBase::getPersonalInfo(const QString &name_user_to_load,const int &name_surname_or_about)
+QVariantList DataBase::getPersonalInfo(const QString &name_user_to_load)
 {
     qDebug()<<"try get personInfo";
-    QString colomn;
-    QString mess;
-    if(name_surname_or_about==0)
-        colomn="NAME";
-    else if(name_surname_or_about==1)
-        colomn="SURNAME";
-    else if(name_surname_or_about==2)
-        colomn="DESCRIPTION";
+    QVariantList nameSurnameDescImage;
 
     QSqlQuery query;
-    QString str = QString("SELECT "+colomn+" FROM " USERS_TABLE " WHERE " USER_NICKNAME " = '"+name_user_to_load+"'  ");
+    QString str = QString("SELECT " USER_NAME ","
+                          " " USER_SURNAME ","
+                          " " USER_DESCRIPTION ","
+                          " " USER_IMAGE " FROM " USERS_TABLE " "
+                          "WHERE " USER_NICKNAME " = '"+name_user_to_load+"'  ");
     query.prepare(str);
     query.exec();
 
-    if(query.first())
-        mess=query.value(0).toString();
+    if(query.isActive())
+        while(query.next())
+        {
+            nameSurnameDescImage.append(query.value(0));
+            nameSurnameDescImage.append(query.value(1));
+            nameSurnameDescImage.append(query.value(2));
+            nameSurnameDescImage.append(query.value(3));
+        }
     else
         qDebug()<<query.lastError();
 
-    return mess;
+    return nameSurnameDescImage;
 
 }
 

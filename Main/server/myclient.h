@@ -8,6 +8,7 @@
 #include <QRegExp>
 
 #include "server.h"
+#include <encryption.h>
 
 class Server;
 
@@ -18,6 +19,7 @@ class MyClient : public QObject
 
 public:
     QTcpSocket *_sok;
+
     static const QString constNameUnknown;
     static const quint8 comRegReq=0;
     static const quint8 comAutchReq = 1;
@@ -36,6 +38,8 @@ public:
     static const quint8 comSaveImagelUser = 14;
     static const quint8 comRegSuccess=15;
     static const quint8 comGetNewMessages=16;
+    static const quint8 comUpdateStatusMessages=17;
+    static const quint8 comSearchUsers=19;
     static const quint8 comErrNameUsed = 201;
     static const quint8 comErrNameOrPassFalse = 202;
 
@@ -60,8 +64,8 @@ private slots:
     void onError(QAbstractSocket::SocketError socketError) const;
 
 private:
-//    QTcpSocket *_sok;
     Server *_serv;
+    Encryption *encrypt;
     quint16 _blockSize;
     QString _name;
     bool _isAutched;

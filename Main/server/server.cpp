@@ -8,6 +8,7 @@
 Server::Server(QWidget *widget, QObject *parent) :QTcpServer(parent)
 {
     _widget = widget;
+    encrypt=new Encryption();
     db=new DataBase;
     db->connectToDataBase();
     getShablonImage();
@@ -86,25 +87,32 @@ void Server::doSendServerMessageToUsers(QString message, const QStringList &user
         if (users.contains(_clients.at(j)->getName()))
             _clients.at(j)->_sok->write(block);
 }
-
-void Server::doSendMessageToUsers(QString message, const QStringList &users_to, QString fromUsername)
+//отправка личного сообщения пользователю с шифрованием
+void Server::doSendMessageToUser(QString message, QString users_to, QString fromUsername)
 {
     QDateTime date;
     date=date.currentDateTime();
 
     qDebug()<<"next step try to insert this mess to db";
-    db->insertIntoMessageTable(fromUsername,users_to[0],message,date.toString());
+    db->insertIntoMessageTable(fromUsername,users_to,message,date.toString());
      //send to user_to
     QByteArray block, blockToSender;
     QDataStream out(&block, QIODevice::WriteOnly);
-    out << (quint16)0 << MyClient::comMessageToUsers << fromUsername << message<<date;
+    out << (quint16)0
+        << MyClient::comMessageToUsers
+        << encrypt->encodeMessage(fromUsername)
+        << encrypt->encodeMessage(message)
+        << encrypt->encodeMessage(date.toString())
+        << db->getImageUser(fromUsername)
+        << encrypt->getHashKey()
+        << encrypt->getHashIV() ;
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
 
 
 
     QDataStream outToSender(&blockToSender, QIODevice::WriteOnly);
-    outToSender << (quint16)0 << MyClient::comMessageToUsers << users_to.join(",") << message<<date;
+    outToSender << (quint16)0 << MyClient::comMessageToUsers << users_to << message<<date;
     outToSender.device()->seek(0);
     outToSender << (quint16)(blockToSender.size() - sizeof(quint16));
 
@@ -155,13 +163,13 @@ bool Server::isNameAndPassTrue(QString name, QString pass) const
 
 void Server::doSendNewMessages(QString last_date, QString name_user_to_load)
 {
-    QStringList malesDataStatusFrom;
+    QVariantList malesDataStatusFromImage;
     qDebug()<<"try to load new messages to "<<name_user_to_load;
-    malesDataStatusFrom=db->loadNewMessages(last_date,name_user_to_load);
-    qDebug()<<"new messages: "<<malesDataStatusFrom;
+    malesDataStatusFromImage=db->loadNewMessages(last_date,name_user_to_load);
+    qDebug()<<"new messages: "<<malesDataStatusFromImage;
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
-    out << (quint16)0 << MyClient::comGetNewMessages << malesDataStatusFrom;
+    out << (quint16)0 << MyClient::comGetNewMessages << malesDataStatusFromImage;
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
     for (int i = 0; i < _clients.length(); ++i)
@@ -202,24 +210,60 @@ void Server::doUpdatePassword(QString name_user, QString newpass) const
 
 void Server::doGetPersonalInfo(QString name_user, QString name_user_to_load) const
 {
-    QString name;
-    QString surname;
-    QString about;
-    QByteArray inByteArray;
-    name=db->getPersonalInfo(name_user_to_load,0);
-    surname=db->getPersonalInfo(name_user_to_load,1);
-    about=db->getPersonalInfo(name_user_to_load,2);
-    inByteArray=db->getImageUser(name_user_to_load);
+    QVariantList nameSurnameDescImage;
+    nameSurnameDescImage=db->getPersonalInfo(name_user_to_load);
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     //
-    out << (quint16)0 << MyClient::comGetPersonalInfo << name<<surname<<about<<inByteArray;
+    out << (quint16)0 << MyClient::comGetPersonalInfo << nameSurnameDescImage;
     //
     out.device()->seek(0);
     out << (quint16)(block.size() - sizeof(quint16));
     //
     for (int i = 0; i < _clients.length(); ++i)
         if (_clients.at(i)->getName()==name_user)
+        {
+            _clients.at(i)->_sok->write(block);
+            return;
+        }
+}
+
+void Server::doSearchUsers(QString name_user,QString text_search) const
+{
+    QVariantList usernameAndImage;
+    usernameAndImage=db->getUsersBySearchText(text_search);
+    qDebug()<<"resultOfSearchUsers: "<<"size:"<<usernameAndImage.size();
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    //test
+    out << (quint16)0 << MyClient::comSearchUsers<< usernameAndImage.size();
+    for (int i = 0; i < usernameAndImage.size(); i=i+2) {
+        out << usernameAndImage[i].toString();
+      //  out <<db->getImageUser(usernameAndImage[i].toString());
+    }
+
+    //end test
+  //  out << (quint16)0 << MyClient::comSearchUsers<< usernameAndImage;
+    out.device()->seek(0);
+    out << (quint16)(block.size() - sizeof(quint16));
+    for (int i = 0; i < _clients.length(); ++i)
+        if (_clients.at(i)->getName()==name_user)
+        {
+            _clients.at(i)->_sok->write(block);
+            return;
+        }
+}
+
+void Server::doUpdateStatusMess(QString name_user, QString loginUserToUpdate) const
+{
+    db->updateStatusMessageTable(loginUserToUpdate,"read");
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    out << (quint16)0 << MyClient::comUpdateStatusMessages<< name_user;
+    out.device()->seek(0);
+    out << (quint16)(block.size() - sizeof(quint16));
+    for (int i = 0; i < _clients.length(); ++i)//поиск онлайн клиента чьи смс прочитаны
+        if (_clients.at(i)->getName()==loginUserToUpdate)
         {
             _clients.at(i)->_sok->write(block);
             return;

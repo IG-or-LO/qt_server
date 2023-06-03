@@ -1,3 +1,4 @@
+include($$PWD/../Qt-Secret/src/Qt-Secret.pri)
 QT -= gui
 QT += core network
 QT +=sql
@@ -20,6 +21,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         database.cpp \
         dialog.cpp \
+        encryption.cpp \
         main.cpp \
         myclient.cpp \
         server.cpp
@@ -32,6 +34,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 HEADERS += \
     database.h \
     dialog.h \
+    encryption.h \
     myclient.h \
     server.h
 
